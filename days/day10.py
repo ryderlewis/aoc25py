@@ -49,15 +49,25 @@ class Machine:
         rref_aug, pivots = M.row_join(b).rref()
 
         # Free variable indices among the 8 variable columns (ignore RHS col)
-        free_vars = [vars[i] for i in range(len(vars)) if i not in pivots]
+        free_idxs = [i for i in range(len(vars)) if i not in pivots]
+        free_vars = [vars[i] for i in free_idxs]
 
-        debug = len(free_vars) > 2
+        # figure out free buttons
+        free_buttons = []
+        if len(free_idxs) > 2:
+            print(free_idxs)
+            for but in self.buttons[-len(free_idxs):]:
+                max_press = min([self.joltage[i] for i in range(len(self.joltage)) if i in but])
+                free_buttons.append(range(0, max_press+1))
+
+        debug = len(free_idxs) > 2
         if debug:
             print(self)
             print(inputs)
             print("Pivot columns:", pivots)
             print("RREF:", rref_aug)
             print("Free variables:", free_vars)
+            print("Free buttons:", free_buttons)
 
         # Solve symbolically (may return expressions involving free variables like H)
         sol_set = sp.linsolve((M, b), vars)
@@ -77,23 +87,24 @@ class Machine:
         # but we'll just search a bit wider safely.
         # print(f"RYDER: {max(self.joltage)}")
         search_ranges = [range(0, max(self.joltage)+1) for _ in free_vars]
+        if free_buttons:
+            search_ranges = free_buttons
 
         for ct, free_vals in enumerate(product(*search_ranges), 1):
             subs = dict(zip(free_vars, free_vals))
             point = [sp.simplify(e.subs(subs)) for e in exprs]
 
-            if debug and ct % 1_000_000 == 0:
+            if debug and ct % 10_000 == 0:
                 print(f"RYDER: tested {ct}")
 
             if all(is_nonneg_int(v) for v in point):
                 s_val = sp.simplify(S.subs(subs))
                 if best is None or s_val < best:
                     best = s_val
-                    if len(free_vars) > 2:
+                    if debug:
                         print(f"RYDER: found {best}")
 
-        if debug:
-            print("Min sum =", best)
+        print("Min sum =", best)
         return best
 
 class Day10(Day):
