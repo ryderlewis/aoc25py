@@ -37,12 +37,7 @@ class Machine:
                     d.append((new_state, count + 1))
 
     def min_joltage_presses(self) -> int:
-        # Variables in order: A B C D E F G H
-        print(self)
-        vars = list('ABCDEFGHIJKLMNOPQRSTUVWXYZ')[:len(self.buttons)]
-        vars_ = sp.symbols(vars, integer=True)
-        # A, B, C, D, E, F, G, H = sp.symbols("A B C D E F G H", integer=True)
-        # vars_ = [A, B, C, D, E, F, G, H]
+        vars = sp.symbols(list('ABCDEFGHIJKLMNOPQRSTUVWXYZ')[:len(self.buttons)], integer=True)
 
         inputs = []
         for i in range(len(self.joltage)):
@@ -51,21 +46,21 @@ class Machine:
         M = sp.Matrix(inputs)
         b = sp.Matrix(self.joltage)
 
-        Aug = M.row_join(b)
-        rref_aug, pivots = Aug.rref()
-
-        print("Pivot columns:", pivots)
-        print("RREF:", rref_aug)
+        rref_aug, pivots = M.row_join(b).rref()
 
         # Free variable indices among the 8 variable columns (ignore RHS col)
-        pivot_set = set(pivots)
-        free_idxs = [i for i in range(len(vars_)) if i not in pivot_set]
-        free_vars = [vars_[i] for i in free_idxs]
+        free_vars = [vars[i] for i in range(len(vars)) if i not in pivots]
 
-        print("Free variables:", free_vars)
+        debug = len(free_vars) > 2
+        if debug:
+            print(self)
+            print(inputs)
+            print("Pivot columns:", pivots)
+            print("RREF:", rref_aug)
+            print("Free variables:", free_vars)
 
         # Solve symbolically (may return expressions involving free variables like H)
-        sol_set = sp.linsolve((M, b), vars_)
+        sol_set = sp.linsolve((M, b), vars)
         (sol_tuple,) = list(sol_set)
         exprs = list(sol_tuple)
 
@@ -76,35 +71,29 @@ class Machine:
             return val.is_integer and val >= 0
 
         best = None
-        best_point = None
-        best_free = None
 
         # Search range for each free variable.
         # For your case with H free, H is small because G >= 0 forces H <= 2 (odd => 1),
         # but we'll just search a bit wider safely.
-        print(f"RYDER: {max(self.joltage)}")
+        # print(f"RYDER: {max(self.joltage)}")
         search_ranges = [range(0, max(self.joltage)+1) for _ in free_vars]
 
         for ct, free_vals in enumerate(product(*search_ranges), 1):
             subs = dict(zip(free_vars, free_vals))
             point = [sp.simplify(e.subs(subs)) for e in exprs]
 
-            if ct % 10_000 == 0 and len(free_vars) > 2:
+            if debug and ct % 1_000_000 == 0:
                 print(f"RYDER: tested {ct}")
 
             if all(is_nonneg_int(v) for v in point):
                 s_val = sp.simplify(S.subs(subs))
                 if best is None or s_val < best:
                     best = s_val
-                    best_point = point
-                    best_free = subs
                     if len(free_vars) > 2:
                         print(f"RYDER: found {best}")
 
-        # print("\nBest feasible (nonnegative integer) solution:")
-        # print("free vars:", best_free)
-        # print("A B C D E F G H =", best_point)
-        print("Min sum =", best)
+        if debug:
+            print("Min sum =", best)
         return best
 
 class Day10(Day):
